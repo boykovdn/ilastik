@@ -225,7 +225,7 @@ def agglomerate_labels(data, labels, block_shape=None, max_workers=None,
     logger.info("run agglomeration")
     agglomerative_clustering = nifty.graph.agglo.agglomerativeClustering(policy)
     agglomerative_clustering.run(True, 10000)
-    node_labels = agglomerative_clustering.result()
+    node_labels = agglomerative_clustering.result().astype('uint32')
 
     logger.info("project node labels to segmentation")
     seg = nifty.graph.rag.projectScalarNodeDataToPixels(rag, node_labels, numberOfThreads=max_workers)
