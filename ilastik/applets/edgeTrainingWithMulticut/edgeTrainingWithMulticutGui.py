@@ -1,8 +1,10 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QGroupBox, QSpacerItem, QSizePolicy
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QGroupBox, QSpacerItem, QSizePolicy, QPushButton, QCheckBox
 
 from ilastik.applets.edgeTraining.edgeTrainingGui import EdgeTrainingGui
 from ilastik.applets.multicut.multicutGui import MulticutGuiMixin
 import ilastik.utility.gui as guiutil
+
+import threading
 
 
 class EdgeTrainingWithMulticutGui(MulticutGuiMixin, EdgeTrainingGui):
@@ -16,6 +18,13 @@ class EdgeTrainingWithMulticutGui(MulticutGuiMixin, EdgeTrainingGui):
         MulticutGuiMixin._after_init(self)
 
     def initAppletDrawerUi(self):
+
+        self.train_edge_clf_box = QCheckBox(
+            text="Train edge classifier",
+            toolTip="Manually select features and train a random forest classifier on them, to predict boundary probabilities. If left unchecked, training will be skiped, and probabilities will be calculated based on the mean probability along edges. This produces good results for clear boundaries.",
+            checked=False,
+        )
+
         training_controls = EdgeTrainingGui.createDrawerControls(self)
         training_controls.layout().setContentsMargins(5, 0, 5, 0)
         training_layout = QVBoxLayout()
@@ -24,6 +33,7 @@ class EdgeTrainingWithMulticutGui(MulticutGuiMixin, EdgeTrainingGui):
         training_box = QGroupBox("Training", parent=self)
         training_box.setLayout(training_layout)
         training_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        training_box.setEnabled(self.train_edge_clf_box.isChecked())
 
         multicut_controls = MulticutGuiMixin.createDrawerControls(self)
         multicut_controls.layout().setContentsMargins(5, 0, 5, 0)
@@ -33,13 +43,57 @@ class EdgeTrainingWithMulticutGui(MulticutGuiMixin, EdgeTrainingGui):
         multicut_box = QGroupBox("Multicut", parent=self)
         multicut_box.setLayout(multicut_layout)
         multicut_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        multicut_box.setEnabled(False)
+        multicut_box.setEnabled(True)
 
         op = self.topLevelOperatorView
         multicut_required_slots = (op.Superpixels, op.Rag, op.EdgeProbabilities, op.EdgeProbabilitiesDict)
         self.__cleanup_fns.append(guiutil.enable_when_ready(multicut_box, multicut_required_slots))
 
+        def _handle_train_edge_clf_box_clicked():
+            training_box.setEnabled(self.train_edge_clf_box.isChecked())
+            op.opEdgeTraining.opPredictEdgeProbabilities.TrainRandomForest.setValue(self.train_edge_clf_box.isChecked())
+            # TODO cleanup_fns, dirtiness
+            op.FreezeClassifier.setValue(False) 
+
+            def updateThread():
+                """
+                Copied over from code for Live Multicut button in:
+   
+                ilastik.applets.multicut.multicutGui._handle_multicut_update_clicked
+
+                The need for threading as explained there:
+                '''
+                This is hacky, but for now it's the only way to do it. We need to 
+                make sure the rendering thread has actually seen that the cache
+                has been updated before we ask it to wait for all views to be 100% 
+                rendered. If we don't wait, it might complete too soon (with the 
+                old data).
+                '''
+                """
+                with self.set_updating():
+                    self.topLevelOperatorView.FreezeCache.setValue(False)
+                    ndim = len(self.topLevelOperatorView.Output.meta.shape)
+                    self.topLevelOperatorView.Output((0,) * ndim, (1,) * ndim).wait()
+     
+                    # Wait for the image to be rendered into all three image views
+                    for imgView in self.editor.imageViews:
+                        if imgView.isVisible():
+                            imgView.scene().joinRenderingAllTiles()
+                    self.topLevelOperatorView.FreezeCache.setValue(True)
+     
+            self.getLayerByName("Multicut Edges").visible = True
+            # self.getLayerByName("Multicut Segmentation").visible = True
+            th = threading.Thread(target=updateThread)
+            th.start()
+
+            # TODO This should be True..?
+            op.FreezeClassifier.setValue(False) 
+
+
+        self.train_edge_clf_box.toggled.connect(_handle_train_edge_clf_box_clicked)
+
         drawer_layout = QVBoxLayout()
+        drawer_layout.addWidget(self.train_edge_clf_box)
         drawer_layout.addWidget(training_box)
         drawer_layout.addWidget(multicut_box)
         drawer_layout.setSpacing(2)
