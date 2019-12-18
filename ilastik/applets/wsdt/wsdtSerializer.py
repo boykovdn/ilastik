@@ -25,6 +25,8 @@ class WsdtSerializer(AppletSerializer):
     def __init__(self, operator, projectFileGroupName):
         slots = [
             SerialListSlot(operator.ChannelSelections),
+            SerialSlot(operator.ReduceTo),
+            SerialSlot(operator.SizeRegularizer),
             SerialSlot(operator.Pmin),
             SerialSlot(operator.MinMembraneSize),
             SerialSlot(operator.MinSegmentSize),

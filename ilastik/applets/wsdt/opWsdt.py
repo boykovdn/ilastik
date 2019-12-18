@@ -9,6 +9,7 @@ from lazyflow.roi import roiToSlice, sliceToRoi
 from lazyflow.operators import OpBlockedArrayCache, OpValueCache
 from lazyflow.operators.generic import OpPixelOperator, OpSingleChannelSelector
 
+from ilastik.workflows.carving.carvingTools import watershed_and_agglomerate
 
 class OpWsdt(Operator):
     # Can be multi-channel (but you'll have to choose which channels you want to use)
@@ -17,6 +18,10 @@ class OpWsdt(Operator):
     # List input channels to use as the boundary map
     # (They'll be summed.)
     ChannelSelections = InputSlot(value=[0])
+
+    # The following slots are used for the parallel computation of watershed
+    SizeRegularizer = InputSlot(value=0.5)
+    ReduceTo = InputSlot(value=0.2)
 
     # Parameters
     Pmin = InputSlot(value=0.5)
@@ -62,19 +67,27 @@ class OpWsdt(Operator):
 
         if self.debug_results:
             self.debug_results.clear()
-        ws, max_label = wsDtSegmentation(
-            pmap[..., 0],
-            self.Pmin.value,
-            self.MinMembraneSize.value,
-            self.MinSegmentSize.value,
-            self.SigmaMinima.value,
-            self.SigmaWeights.value,
-            self.GroupSeeds.value,
-            self.PreserveMembranePmaps.value,
-            out_debug_image_dict=self.debug_results,
-            out=result[..., 0],
-        )
 
+        # Args required by the specific watershed implementation
+        args_watershed = {
+               'Pmin' : self.Pmin.value,
+               'MinMembraneSize' : self.MinMembraneSize.value,
+               'MinSegmentSize' : self.MinSegmentSize.value,
+               'SigmaMinima' : self.SigmaMinima.value,
+               'SigmaWeights' : self.SigmaWeights.value,
+               'GroupSeeds' : self.GroupSeeds.value,
+               'PreserveMembranePmaps' : self.PreserveMembranePmaps.value
+               }
+
+        reduce_to = self.ReduceTo.value
+        size_regularizer = self.SizeRegularizer.value
+        labels, max_id = watershed_and_agglomerate(pmap[..., 0],
+                                                 **args_watershed,
+                                                 reduce_to=reduce_to,
+                                                 size_regularizer=size_regularizer,
+                                                 out_debug_image_dict=self.debug_results)
+
+        result[..., 0] = labels
         self.watershed_completed()
 
     def propagateDirty(self, slot, subindex, roi):
@@ -85,6 +98,10 @@ class OpWsdt(Operator):
 class OpCachedWsdt(Operator):
     RawData = InputSlot(optional=True)  # Used by the GUI for display only
     FreezeCache = InputSlot(value=True)
+
+    # The following slots are used for the parallel computation of watershed
+    SizeRegularizer = InputSlot(value=0.5)
+    ReduceTo = InputSlot(value=1.0)
 
     Input = InputSlot()  # Can be multi-channel (but you'll have to choose which channel you want to use)
     ChannelSelections = InputSlot(value=[0])
@@ -131,6 +148,8 @@ class OpCachedWsdt(Operator):
         self._opWsdt.GroupSeeds.connect(self.GroupSeeds)
         self._opWsdt.PreserveMembranePmaps.connect(self.PreserveMembranePmaps)
         self._opWsdt.EnableDebugOutputs.connect(self.EnableDebugOutputs)
+        self._opWsdt.SizeRegularizer.connect(self.SizeRegularizer)
+        self._opWsdt.ReduceTo.connect(self.ReduceTo)
 
         self._opCache = OpBlockedArrayCache(parent=self)
         self._opCache.fixAtCurrent.connect(self.FreezeCache)

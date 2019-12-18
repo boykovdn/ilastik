@@ -177,6 +177,26 @@ class WsdtGui(LayerViewerGui):
         drawer_layout.addLayout(control_layout("Min Superpixel Size", superpixel_size_box))
         self.superpixel_size_box = superpixel_size_box
 
+        reduction_factor_box = QDoubleSpinBox()
+        reduction_factor_box.setDecimals(2)
+        reduction_factor_box.setMinimum(0.00)
+        reduction_factor_box.setMaximum(1.0)
+        reduction_factor_box.setSingleStep(0.1)
+        configure_update_handlers(reduction_factor_box.valueChanged, op.ReduceTo)
+        reduction_factor_box.setToolTip("Reduce the number of superpixels by this factor. A value of 1 means no reduction")
+        drawer_layout.addLayout(control_layout("Reduction Factor", reduction_factor_box))
+        self.reduction_factor_box = reduction_factor_box
+
+        size_regularizer_box = QDoubleSpinBox()
+        size_regularizer_box.setDecimals(2)
+        size_regularizer_box.setMinimum(0.00)
+        size_regularizer_box.setMaximum(1.0)
+        size_regularizer_box.setSingleStep(0.1)
+        configure_update_handlers(size_regularizer_box.valueChanged, op.SizeRegularizer)
+        size_regularizer_box.setToolTip("Currently unavailable")
+        drawer_layout.addLayout(control_layout("Size Regularization", size_regularizer_box))
+        self.size_regularizer_box = size_regularizer_box
+
         preserve_pmaps_box = QCheckBox()
         configure_update_handlers(preserve_pmaps_box.toggled, op.PreserveMembranePmaps)
         preserve_pmaps_box.setToolTip(
@@ -233,6 +253,8 @@ class WsdtGui(LayerViewerGui):
             else:
                 self.channel_button.setText(",".join(map(str, channel_selections)))
 
+            self.size_regularizer_box.setValue(op.SizeRegularizer.value)
+            self.reduction_factor_box.setValue(op.ReduceTo.value)
             self.threshold_box.setValue(op.Pmin.value)
             self.membrane_size_box.setValue(op.MinMembraneSize.value)
             self.superpixel_size_box.setValue(op.MinSegmentSize.value)
@@ -254,6 +276,8 @@ class WsdtGui(LayerViewerGui):
                 if self.channel_actions[ch].isChecked():
                     channel_selections.append(ch)
 
+            op.SizeRegularizer.setValue(self.size_regularizer_box.value())
+            op.ReduceTo.setValue(self.reduction_factor_box.value())
             op.ChannelSelections.setValue(channel_selections)
             op.Pmin.setValue(self.threshold_box.value())
             op.MinMembraneSize.setValue(self.membrane_size_box.value())

@@ -140,6 +140,9 @@ def parallel_watershed(data, block_shape=None, halo=None, max_workers=None, out=
         outer_slicing = block_to_slicing(block.outerBlock)
         inner_local_slicing = block_to_slicing(block.innerBlockLocal)
 
+        # TODO Test if arguments match
+        # raise Exception(kwargs.items())
+
         # perform watershed on the data for the block with halo
         outer_block_data = numpy.require(data[outer_slicing], dtype="float32")
         # outer_block_labels_old, _ = vigra.analysis.watershedsNew(outer_block_data)
@@ -147,6 +150,7 @@ def parallel_watershed(data, block_shape=None, halo=None, max_workers=None, out=
 
         # extract the labels of the inner block and perform connected components
         inner_block_labels = vigra.analysis.labelMultiArray(outer_block_labels[inner_local_slicing])
+        print('<DEBUG>Number of superpixels: ', maxid)
 
         # write watershed result to the label array
         labels[inner_slicing] = inner_block_labels
@@ -177,6 +181,9 @@ def parallel_watershed(data, block_shape=None, halo=None, max_workers=None, out=
         tasks = [executor.submit(add_offset_block, block_index) for block_index in range(n_blocks)]
         [t.result() for t in tasks]
 
+    import numpy as np
+    print('<DEBUG>min_id_parallel_ws: ', np.min(labels))
+    print('<DEBUG>num_sp: ', np.unique(labels, return_counts=True))
     return labels, max_id
 
 
@@ -240,6 +247,8 @@ def agglomerate_labels(data, labels, block_shape=None, max_workers=None, reduce_
     # the graph watershed will fail
     _, max_id, _ = vigra.analysis.relabelConsecutive(seg, start_label=1, keep_zeros=False, out=seg)
     logger.info("agglomerative supervoxel creation is done")
+    import numpy as np
+    print('<DEBUG>min_id_aggl_labels: ', np.min(seg))
     return numpy.require(seg, dtype="uint32"), max_id
 
 
